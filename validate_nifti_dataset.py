@@ -95,13 +95,15 @@ def main():
     nifti_spacings = set()
 
     for i, dicom_dir in enumerate(dicom_dirs, start=1):
-        expected_nifti_name = f"{dicom_dir.name}.nii.gz"
+        relative_path = dicom_dir.relative_to(dicom_root)
+        safe_name = "_".join(relative_path.parts)
+        expected_nifti_name = f"{safe_name}.nii.gz"
         nifti_path = nifti_root / expected_nifti_name
         
-        print(f"[{i}/{total_dirs}] Verifying: {dicom_dir.name} -> {expected_nifti_name}")
+        print(f"[{i}/{total_dirs}] Verifying: {relative_path} -> {expected_nifti_name}")
         
         if not nifti_path.exists():
-            print(f"  Warning: Missing NIfTI file for {dicom_dir.name}")
+            print(f"  Warning: Missing NIfTI file for {safe_name}")
             missing_count += 1
             continue
             
@@ -116,7 +118,7 @@ def main():
     processed = total_dirs - missing_count
     print(f"Finished: {success_count} success, {processed - success_count} failed out of {processed}")
     if missing_count > 0:
-         print(f"Ignored {missing_count} directory(ies) due to missing NIfTI files.")
+        print(f"Ignored {missing_count} directory(ies) due to missing NIfTI files.")
 
     print("-" * 60)
     print("Dimensional Uniformity Check:")

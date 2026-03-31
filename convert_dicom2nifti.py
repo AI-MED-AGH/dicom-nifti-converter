@@ -38,7 +38,7 @@ def convert_dicom_to_nifti(dicom_dir: Path, output_path: Path) -> bool:
 
 def main():
     parser = argparse.ArgumentParser(
-                    prog='DICOM to Nifty converter',
+                    prog='DICOM to NIfTI converter',
                     description='Mass converter for DICOM directories to .nii.gz files',
                     epilog='Provide input directory and output save directory')
     parser.add_argument("dir")
@@ -66,9 +66,11 @@ def main():
     print(f"Starting conversion of {total_dirs} directories...")
 
     for i, dicom_dir in enumerate(dicom_dirs, start=1):
-        output_file = save_dir / f"{dicom_dir.name}.nii.gz"
+        relative_path = dicom_dir.relative_to(root_dir)
+        safe_name = "_".join(relative_path.parts)
+        output_file = save_dir / f"{safe_name}.nii.gz"
         
-        print(f"[{i}/{total_dirs}] Converting: {dicom_dir.name} -> {output_file.name}")
+        print(f"[{i}/{total_dirs}] Converting: {relative_path} -> {output_file.name}")
         
         if convert_dicom_to_nifti(dicom_dir, output_file):
             successes += 1
