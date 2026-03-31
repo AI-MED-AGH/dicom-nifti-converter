@@ -37,7 +37,14 @@ def verify_single_pair(dicom_dir: Path, nifti_path: Path) -> Optional[Tuple[bool
         dicom_spacing = (float(pixel_spacing[0]), float(pixel_spacing[1]), abs(float(spacing_between_slices)))
 
         nii = nib.load(str(nifti_path))
-        nifti_shape = nii.shape
+        nifti_full_shape = nii.shape
+        if len(nifti_full_shape) < 3:
+            print(f"{dicom_dir.name}: NIfTI volume has fewer than 3 dimensions: {nifti_full_shape}")
+            return None
+        if len(nifti_full_shape) > 3:
+            print(f"Note: NIfTI {nifti_path.name} has extra non-spatial dimensions {nifti_full_shape[3:]}, "
+                  f"using spatial shape {nifti_full_shape[:3]} for comparison.")
+        nifti_shape = nifti_full_shape[:3]
         nifti_spacing = nii.header.get_zooms()[:3] 
 
         dim_match = set(dicom_shape[:2]) == set(nifti_shape[:2]) and dicom_shape[2] == nifti_shape[2]
