@@ -6,7 +6,6 @@ It checks:
 3. If the entire dataset has uniform dimensions.
 """
 import argparse
-import sys
 from pathlib import Path
 import pydicom
 import nibabel as nib
@@ -84,13 +83,11 @@ def main():
     nifti_root = Path(args.nifti_dir).resolve()
 
     if not dicom_root.is_dir() or not nifti_root.is_dir():
-        print("Error: Both arguments must be directories.")
-        sys.exit(1)
+        raise NotADirectoryError("Both arguments must be directories.")
 
     dicom_dirs = find_dicom_directories(dicom_root)
     if not dicom_dirs:
-        print(f"Error: No DICOM directories found in {dicom_root}")
-        sys.exit(1)
+        raise FileNotFoundError(f"No DICOM directories found in {dicom_root}")
         
     total_dirs = len(dicom_dirs)
     print(f"Starting verification of {total_dirs} directories...")
@@ -103,7 +100,7 @@ def main():
 
     for i, dicom_dir in enumerate(dicom_dirs, start=1):
         relative_path = dicom_dir.relative_to(dicom_root)
-        safe_name = "_".join(relative_path.parts)
+        safe_name = "@".join(relative_path.parts)
         expected_nifti_name = f"{safe_name}.nii.gz"
         nifti_path = nifti_root / expected_nifti_name
         

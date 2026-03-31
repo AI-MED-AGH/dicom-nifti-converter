@@ -6,7 +6,6 @@ It features:
 3. Forced RAS orientation (`reorient_nifti=True`) to standardize the affine matrix.
 """
 import argparse
-import sys
 from pathlib import Path
 import dicom2nifti
 
@@ -49,15 +48,13 @@ def main():
     save_dir = Path(args.save).resolve()
 
     if not root_dir.is_dir():
-        print(f"Error: Input directory does not exist: {root_dir}")
-        sys.exit(1)
+        raise NotADirectoryError(f"Input directory does not exist: {root_dir}")
 
     save_dir.mkdir(parents=True, exist_ok=True)
     
     dicom_dirs = find_dicom_directories(root_dir)
     if not dicom_dirs:
-        print(f"Error: No DICOM directories found in {root_dir}")
-        sys.exit(1)
+        raise FileNotFoundError(f"No DICOM directories found in {root_dir}")
 
     total_dirs = len(dicom_dirs)
     successes = 0
@@ -67,7 +64,7 @@ def main():
 
     for i, dicom_dir in enumerate(dicom_dirs, start=1):
         relative_path = dicom_dir.relative_to(root_dir)
-        safe_name = "_".join(relative_path.parts)
+        safe_name = "@".join(relative_path.parts)
         output_file = save_dir / f"{safe_name}.nii.gz"
         
         print(f"[{i}/{total_dirs}] Converting: {relative_path} -> {output_file.name}")
@@ -79,6 +76,9 @@ def main():
 
     print("-" * 60)
     print(f"Finished: {successes} success, {failures} failed out of {total_dirs}")
+    if total_dirs > 0:
+        success_ratio = successes / total_dirs
+        print(f"Success Ratio: {success_ratio:.2%}")
     
 if __name__ == "__main__":
     main()
