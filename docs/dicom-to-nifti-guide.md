@@ -6,16 +6,27 @@ A fast and modular command-line toolkit for processing medical imaging datasets.
 
 - **Batch Conversion**: Fast DICOM to NIfTI transformation with automatic RAS reorientation.
 - **Strict Validation**: Post-conversion QA comparing dimensions and voxel spacing against original DICOM headers.
-- **Dimension Analysis**: Scans for spatial uniformity and detects outliers across both NIfTI and DICOM datasets.
+- **Dimension Analysis**: Generates detailed reports on spatial uniformity, detecting both dimensional and voxel spacing outliers across NIfTI and DICOM datasets.
 - **Pluggable Strategies**: Organize NIfTI files into flexible directory layouts (Flat, Mirror, Map).
 - **Lightweight Architecture**: Analyzes datasets by reading medical headers only, preventing RAM overload.
 - **Clean CLI**: Standardized, progress-bar-equipped console outputs across all tools.
 
+## Prerequisites
+
+- **Python 3.10+**
+- **Data Format**: Your source DICOM files must have the `.dcm` extension. The toolkit's recursive scanner explicitly searches for `*.dcm` to identify image series.
+
 ## Installation
 
-Install using pip and the provided requirements file:
+Install using `uv` (recommended) or standard `pip` and the provided requirements file:
 
 ```bash
+# Using uv
+uv venv
+source .venv/bin/activate  # On Windows: .venv\Scripts\activate
+uv pip install -r requirements.txt
+
+# Using pip
 pip install -r requirements.txt
 ```
 
@@ -36,26 +47,53 @@ python validate.py /path/to/dicoms /path/to/output_nifti
 ```
 
 ### 3. Analyzing Dataset Dimensions
-Scan raw DICOMs or NIfTI files for dataset uniformity and outliers.
+Generates a detailed report for any DICOM or NIfTI dataset. The tool evaluates spatial uniformity by grouping unique 3D image matrices and physical voxel spacings (in mm). It provides frequency counts of in-plane resolutions (X, Y) and slice depths (Z), detects outliers based on both dimensions and voxel spacings, and includes a detailed inventory of every processed volume.
 
 ```bash
 # Analyze NIfTI files
 python analyze.py --nifti /path/to/output_nifti
 
-# Analyze raw DICOM series
+# Analyze DICOM datasets
 python analyze.py --dicom /path/to/dicoms
 
 # Save analysis report to a text file
 python analyze.py --dicom /path/to/dicoms -s report.txt
 ```
 
-## Available Scripts
+## CLI Reference
 
-| Script | Purpose | Description |
-|--------|---------|-------------|
-| `convert.py` | Conversion | Performs DICOM-to-NIfTI format conversion using dicom2nifti. |
-| `validate.py` | Validation | Validates output integrity by matching NIfTI spatial properties against source DICOM headers. |
-| `analyze.py` | Auditing | Scans dataset to report dimension frequencies, spacing distributions, and detect outliers. |
+#### `convert.py`
+
+**Usage:** `python convert.py <dicom_dir> -s <save_dir> [options]`
+
+| Argument | Required | Description |
+|----------|----------|-------------|
+| `<dicom_dir>` | Yes (Positional) | Root directory containing input DICOM series. |
+| `-s`, `--save` | Yes | Output directory where NIfTI files will be saved. |
+| `--mode` | No | Output structure mode: `flat`, `mirror`, or `map` (default: `flat`). |
+| `--sep` | No | *(Strategy: flat)* Separator character for filenames (default: `@`). |
+| `--prefix` | No | *(Strategy: map)* Base filename prefix (default: `vol`). |
+
+#### `validate.py`
+
+**Usage:** `python validate.py <dicom_dir> <nifti_dir> [options]`
+
+| Argument | Required | Description |
+|----------|----------|-------------|
+| `<dicom_dir>` | Yes (Positional) | Root directory containing original DICOM series. |
+| `<nifti_dir>` | Yes (Positional) | Directory containing converted NIfTI files. |
+| `--mode` | No | Naming strategy used during conversion (default: `flat`). |
+| `--sep` | No | *(Strategy: flat)* Separator character that was used (default: `@`). |
+
+#### `analyze.py`
+
+**Usage:** `python analyze.py (--nifti <dir> | --dicom <dir>) [-s <report.txt>]`
+
+| Argument | Required | Description |
+|----------|----------|-------------|
+| `--nifti` | Conditional | Directory containing `.nii.gz` files to analyze. *(Either this or `--dicom` is required)* |
+| `--dicom` | Conditional | Root directory containing DICOM series to analyze. *(Either this or `--nifti` is required)* |
+| `-s`, `--save` | No | Save the analysis report to a text file at the given path. |
 
 ## Naming Strategies
 
@@ -63,9 +101,9 @@ The toolkit uses **Naming Strategies** to decide how generated NIfTI files are n
 
 | Mode | Behavior | Example Input | Example Output |
 |------|----------|---------------|----------------|
-| `flat` | All NIfTI files in one directory, separated by a character. | `patient_1/head/scan` | `output/patient_1@head@scan.nii.gz` |
-| `mirror` | Replicates the exact directory structure of the source. | `patient_1/head/scan` | `output/patient_1/head/scan.nii.gz` |
-| `map` | Sequential naming with a generated JSON registry map. | `patient_1/head/scan` | `output/vol_1.nii.gz` + `dataset_map.json` |
+| `flat` | All NIfTI files are placed in a single directory. The original directory structure is encoded directly into the filename using a specified separator. | `patient_1/head/scan` | `output/patient_1@head@scan.nii.gz` |
+| `mirror` | Recreates the original folder structure in the output. | `patient_1/head/scan` | `output/patient_1/head/scan.nii.gz` |
+| `map` | Produces sequentially numbered filenames and saves a JSON mapping file to trace each NIfTI file back to its original DICOM path. | `patient_1/head/scan` | `output/vol_1.nii.gz` + `dataset_map.json` |
 
 ### Strategy Arguments
 
@@ -81,9 +119,11 @@ python convert.py dicoms/ -s nifti/ --mode map --prefix "subject"
 
 ### Building Custom Naming Strategies
 
-Build custom directory layouts by extending the `NamingStrategy` base class.
+Build custom directory layouts by extending the abstract `NamingStrategy` base class. This base module defines the required methods (`build_output_path` and `resolve_nifti_path`) that any custom naming strategy must implement to be compatible with the converter and validator scripts.
 
-1. **Create your strategy file** (`naming/my_strategy.py`):
+To add a new naming mode:
+
+1. **Create your strategy file** (`naming/my_strategy.py`) containing a class inheriting from `NamingStrategy`:
 
 ```python
 from pathlib import Path
@@ -94,7 +134,7 @@ class CustomStrategy(NamingStrategy):
 
     def build_output_path(self, output_dir: Path, relative_path: Path, index: int) -> Path:
         """Generates the target save path for the converted NIfTI file."""
-        target_name = f"custom_{index}.nii.gz"
+        target_name = f"custom_{relative_path.name}.nii.gz"
         return output_dir / target_name
 
     def resolve_nifti_path(self, output_dir: Path, relative_path: Path) -> Path | None:
@@ -104,6 +144,7 @@ class CustomStrategy(NamingStrategy):
 ```
 
 2. **Register the strategy** (in `naming/__init__.py`):
+Import your custom strategy and add one entry to the `STRATEGIES` dict.
 
 ```python
 from naming.my_strategy import CustomStrategy
@@ -119,10 +160,10 @@ STRATEGIES = {
 ## Project Structure
 
 ```text
-med-nifti-toolkit/
+dicom-to-nifti-toolkit/
 ├── convert.py              - CLI: DICOM to NIfTI converter
 ├── validate.py             - CLI: Post-conversion QA
-├── analyze.py              - CLI: Dataset dimension analysis
+├── analyze.py              - CLI: Dataset dimension and spacing analysis
 ├── utils.py                - Shared utilities
 ├── naming/                 - Pluggable naming strategies
 │   ├── __init__.py         - Strategy registry

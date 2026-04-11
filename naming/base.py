@@ -1,8 +1,3 @@
-"""Abstract base class defining the interface for naming strategies.
-
-This module defines the required methods that any custom naming strategy
-must implement to be compatible with the converter and validator scripts.
-"""
 from abc import ABC, abstractmethod
 from pathlib import Path
 

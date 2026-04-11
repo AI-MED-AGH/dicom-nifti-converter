@@ -1,9 +1,5 @@
-"""Dataset dimension analyzer for NIfTI and DICOM.
-
-Scans a folder of NIfTI files or DICOM series, collects spatial dimensions
-and voxel resolutions, detects outliers, and generates a summary report.
-"""
 import argparse
+import textwrap
 from pathlib import Path
 from typing import NamedTuple
 import nibabel as nib
@@ -12,6 +8,8 @@ import pydicom
 from tqdm import tqdm
 
 from utils import find_dicom_directories
+
+SEPARATOR = "━" * 80
 
 class VolumeInfo(NamedTuple):
     name: str
@@ -91,7 +89,7 @@ def scan_dicom_directory(dicom_root: Path) -> list[VolumeInfo]:
     return volumes
 
 
-def find_outliers(volumes: list[VolumeInfo]) -> list[VolumeInfo]:
+def find_dimension_outliers(volumes: list[VolumeInfo]) -> list[VolumeInfo]:
     """Identifies volumes whose spatial dimensions deviate significantly from the dataset norm.
 
     An outlier is defined as any volume where at least one spatial dimension differs
@@ -101,7 +99,7 @@ def find_outliers(volumes: list[VolumeInfo]) -> list[VolumeInfo]:
         volumes: A list of VolumeInfo objects representing the dataset.
 
     Returns:
-        A list of VolumeInfo objects flagged as outliers.
+        A list of VolumeInfo objects flagged as dimensional outliers.
     """
     if len(volumes) < 5:
         return []
@@ -119,12 +117,41 @@ def find_outliers(volumes: list[VolumeInfo]) -> list[VolumeInfo]:
     return outliers
 
 
-def build_report(volumes: list[VolumeInfo], outliers: list[VolumeInfo], source_type: str) -> str:
+def find_spacing_outliers(volumes: list[VolumeInfo]) -> list[VolumeInfo]:
+    """Identifies volumes whose voxel spacings deviate significantly from the dataset norm.
+
+    An outlier is defined as any volume where at least one spacing component differs
+    from the median spacing by more than two standard deviations.
+
+    Args:
+        volumes: A list of VolumeInfo objects representing the dataset.
+
+    Returns:
+        A list of VolumeInfo objects flagged as spacing outliers.
+    """
+    if len(volumes) < 5:
+        return []
+
+    spacings = np.array([v.spacing for v in volumes])
+    medians = np.median(spacings, axis=0)
+    stds = np.std(spacings, axis=0)
+
+    outliers = []
+    for vol in volumes:
+        deviations = np.abs(np.array(vol.spacing) - medians)
+        if np.any(deviations > 2 * stds + 1e-9):
+            outliers.append(vol)
+
+    return outliers
+
+
+def build_report(volumes: list[VolumeInfo], dim_outliers: list[VolumeInfo], spc_outliers: list[VolumeInfo], source_type: str) -> str:
     """Generates a text report summarizing dataset dimensions and potential issues.
 
     Args:
         volumes: A list of VolumeInfo objects for the dataset.
-        outliers: A subset of VolumeInfo objects flagged as dimensional outliers.
+        dim_outliers: A subset of VolumeInfo objects flagged as dimensional outliers.
+        spc_outliers: A subset of VolumeInfo objects flagged as spacing outliers.
         source_type: A descriptive string indicating the data source (e.g., "NIfTI", "DICOM").
 
     Returns:
@@ -135,29 +162,62 @@ def build_report(volumes: list[VolumeInfo], outliers: list[VolumeInfo], source_t
 
     lines: list[str] = []
 
-    lines.append(f"{'-' * 60}")
+    lines.append(SEPARATOR)
     lines.append(f"Dataset Dimension Analysis ({source_type})")
-    lines.append(f"{'-' * 60}")
+    lines.append(SEPARATOR)
     lines.append(f"Total volumes:   {len(volumes)}")
-    lines.append(f"{'-' * 60}")
+    lines.append(SEPARATOR)
 
     # Shape summary
     lines.append("Dimensions")
-    lines.append(f"{'-' * 60}")
+    lines.append(SEPARATOR)
     if len(shapes) == 1:
         lines.append(f"Uniform - all volumes: {list(shapes)[0]}")
     else:
-        lines.append(f"Warning: {len(shapes)} unique dimension groups:")
+        lines.append(f"Warning: {len(shapes)} unique 3D dimension groups:")
         shape_counts: dict[tuple, int] = {}
         for v in volumes:
             shape_counts[v.shape] = shape_counts.get(v.shape, 0) + 1
+        
+        max_shape_len = max(len(str(shape)) for shape in shape_counts.keys())
         for shape, count in sorted(shape_counts.items(), key=lambda s: s[1], reverse=True):
-            lines.append(f"{shape}  x{count}")
-    lines.append(f"{'-' * 60}")
+            lines.append(f"    - {str(shape):<{max_shape_len}}  x{count}")
+
+        # Resolutions
+        xy_counts: dict[tuple, int] = {}
+        for v in volumes:
+            xy = v.shape[:2]
+            xy_counts[xy] = xy_counts.get(xy, 0) + 1
+            
+        if len(xy_counts) == 1:
+            lines.append(f"\n  Resolution (X, Y) uniform: {list(xy_counts.keys())[0]}")
+        else:
+            lines.append(f"\n  Resolution (X, Y) groups:")
+            max_xy_len = max(len(str(xy)) for xy in xy_counts.keys())
+            for xy, count in sorted(xy_counts.items(), key=lambda s: s[1], reverse=True):
+                lines.append(f"    - {str(xy):<{max_xy_len}}  x{count}")
+
+        # Slices counts
+        z_counts: dict[int, int] = {}
+        for v in volumes:
+            z = v.shape[2]
+            z_counts[z] = z_counts.get(z, 0) + 1
+            
+        if len(z_counts) == 1:
+            lines.append(f"\n  Slice Count (Z) uniform: {list(z_counts.keys())[0]}")
+        else:
+            lines.append("\n  Slice Count (Z) groups:")
+            sorted_z = sorted(z_counts.items(), key=lambda x: x[1], reverse=True)
+            z_strs = [f"{z}\xa0(x{count})" for z, count in sorted_z]
+            z_line = ", ".join(z_strs)
+            
+            for w in textwrap.wrap(z_line, width=76):
+                lines.append(f"    {w.replace(chr(160), ' ')}")
+    lines.append(SEPARATOR)
 
     # Spacing summary
     lines.append("Voxel Spacing")
-    lines.append(f"{'-' * 60}")
+    lines.append(SEPARATOR)
     if len(spacings) == 1:
         lines.append(f"Uniform - all volumes: {list(spacings)[0]} mm")
     else:
@@ -165,31 +225,48 @@ def build_report(volumes: list[VolumeInfo], outliers: list[VolumeInfo], source_t
         spacing_counts: dict[tuple, int] = {}
         for v in volumes:
             spacing_counts[v.spacing] = spacing_counts.get(v.spacing, 0) + 1
+            
+        max_spc_len = max(len(str(spc)) for spc in spacing_counts.keys())
         for spc, count in sorted(spacing_counts.items(), key=lambda v: v[1], reverse=True):
-            lines.append(f"{spc} mm  x{count}")
-    lines.append(f"{'-' * 60}")
+            lines.append(f"    - {str(spc):<{max_spc_len}} mm  x{count}")
+    lines.append(SEPARATOR)
 
-    # Outlier report
-    lines.append("Outliers")
-    lines.append(f"{'-' * 60}")
-    if outliers:
-        lines.append(f"{len(outliers)} outlier(s) detected:")
-        for vol in outliers:
-            lines.append(f"- {vol.name}")
-            lines.append(f"shape={vol.shape}  spacing={vol.spacing}")
+    # Dimension outlier report
+    lines.append("Dimension Outliers")
+    lines.append(SEPARATOR)
+    if dim_outliers:
+        lines.append(f"{len(dim_outliers)} outlier(s) detected:")
+        max_outlier_shape_len = max(len(str(vol.shape)) for vol in dim_outliers)
+        for vol in dim_outliers:
+            lines.append(f"    - {vol.name}")
+            lines.append(f"      shape={str(vol.shape):<{max_outlier_shape_len}}  spacing={vol.spacing}")
     else:
         lines.append("No dimensional outliers detected.")
-    lines.append(f"{'-' * 60}")
+    lines.append(SEPARATOR)
+
+    # Spacing outlier report
+    lines.append("Spacing Outliers")
+    lines.append(SEPARATOR)
+    if spc_outliers:
+        lines.append(f"{len(spc_outliers)} outlier(s) detected:")
+        max_outlier_spc_len = max(len(str(vol.spacing)) for vol in spc_outliers)
+        for vol in spc_outliers:
+            lines.append(f"    - {vol.name}")
+            lines.append(f"      spacing={str(vol.spacing):<{max_outlier_spc_len}} mm  shape={vol.shape}")
+    else:
+        lines.append("No spacing outliers detected.")
+    lines.append(SEPARATOR)
 
     # Dataset details
     lines.append("Dataset Details")
-    lines.append(f"{'-' * 60}")
+    lines.append(SEPARATOR)
     idx_width = len(str(len(volumes)))
+    max_shape_len = max(len(str(vol.shape)) for vol in volumes) if volumes else 0
     for i, vol in enumerate(volumes, start=1):
         lines.append(f"[{i:>{idx_width}}] {vol.name}")
-        lines.append(f"shape={vol.shape}  spacing={vol.spacing}")
+        lines.append(f"      shape={str(vol.shape):<{max_shape_len}}  spacing={vol.spacing}")
 
-    lines.append(f"{'-' * 60}")
+    lines.append(SEPARATOR)
     return "\n".join(lines)
 
 
@@ -223,8 +300,9 @@ def main():
         vols = scan_dicom_directory(dicom_dir)
         source_type = "DICOM"
 
-    outliers = find_outliers(vols)
-    report = build_report(vols, outliers, source_type)
+    dim_outliers = find_dimension_outliers(vols)
+    spc_outliers = find_spacing_outliers(vols)
+    report = build_report(vols, dim_outliers, spc_outliers, source_type)
 
     print(f"\n{report}")
 

@@ -1,8 +1,3 @@
-"""Map naming strategy implementation.
-
-Produces sequentially numbered filenames and saves a JSON mapping file
-to trace each NIfTI file back to its original DICOM path.
-"""
 import json
 from pathlib import Path
 

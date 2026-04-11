@@ -1,9 +1,3 @@
-"""Strategy registry.
-
-To add a new naming mode:
-1. Create a class inheriting from NamingStrategy in this folder.
-2. Import it below and add one entry to the STRATEGIES dict.
-"""
 from naming.base import NamingStrategy
 from naming.flat import FlatStrategy
 from naming.mirror import MirrorStrategy

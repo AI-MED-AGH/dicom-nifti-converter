@@ -1,6 +1,3 @@
-"""Mirror naming strategy implementation.
-
-Recreates the original folder structure in the output."""
 from pathlib import Path
 from naming.base import NamingStrategy
 

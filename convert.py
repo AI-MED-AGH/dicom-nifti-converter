@@ -1,9 +1,3 @@
-"""Automated DICOM to NIfTI converter with configurable output structure.
-
-Finds DICOM series recursively, converts each one to .nii.gz using dicom2nifti
-with RAS reorientation, and places output files according to the chosen
-naming strategy.
-"""
 import argparse
 from pathlib import Path
 import dicom2nifti
@@ -11,6 +5,8 @@ from tqdm import tqdm
 
 from utils import find_dicom_directories
 from naming import get_strategy, available_strategies
+
+SEPARATOR = "━" * 80
 
 
 def convert_single(dicom_dir: Path, output_path: Path) -> bool:
@@ -42,7 +38,7 @@ def main():
 
     parser = argparse.ArgumentParser(
         prog="convert",
-        description=("Mass converter for DICOM directories to .nii.gz files. "
+        description=("Batch converter for DICOM directories to .nii.gz files. "
             "Supports multiple output directory structures via --mode."),
         epilog="Provide input DICOM directory and output save directory.",
     )
@@ -81,14 +77,14 @@ def main():
     failures = 0
     failed_dirs: list[str] = []
 
-    print(f"\n{'-' * 60}")
+    print(f"\n{SEPARATOR}")
     print("DICOM → NIfTI Conversion")
-    print(f"{'-' * 60}")
+    print(SEPARATOR)
     print(f"Source:    {root_dir}")
     print(f"Output:    {save_dir}")
     print(f"Mode:      {args.mode}")
     print(f"Items:     {total}")
-    print(f"{'-' * 60}\n")
+    print(f"{SEPARATOR}\n")
 
     progress = tqdm(enumerate(dicom_dirs, start=1), total=total, unit="series", desc="Converting")
 
@@ -108,16 +104,18 @@ def main():
 
     strategy.on_conversion_complete(save_dir)
 
-    #Summary
-    print(f"\n{'-' * 60}")
+    # Summary
+    print(f"\n{SEPARATOR}")
     print("Conversion Summary")
-    print(f"{'-' * 60}")
+    print(SEPARATOR)
     print(f"Successful:  {successes}/{total}")
     if failures > 0:
         print(f"Failed:      {failures}/{total}")
         for name in failed_dirs:
             print(f"    - {name}")
-    print(f"Success rate:  {successes / total:.1%}" if total > 0 else "")
+    if total > 0:
+        print(f"Success rate:  {successes / total:.1%}")
+    print(SEPARATOR)
 
 if __name__ == "__main__":
     main()

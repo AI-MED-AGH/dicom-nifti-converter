@@ -1,9 +1,3 @@
-"""Post-conversion check for NIfTI datasets.
-
-Verifies that every DICOM series has a matching NIfTI file, compares spatial
-metadata (dimensions, voxel sizes) against the original DICOM headers, and
-reports whether the dataset has uniform dimensions.
-"""
 import argparse
 from pathlib import Path
 from typing import Optional, Tuple
@@ -14,6 +8,8 @@ from tqdm import tqdm
 
 from utils import find_dicom_directories
 from naming import get_strategy, available_strategies
+
+SEPARATOR = "━" * 80
 
 
 def verify_single_pair(dicom_dir: Path, nifti_path: Path) -> tuple[bool, tuple, tuple] | None:
@@ -135,14 +131,14 @@ def main():
     nifti_shapes = set()
     nifti_spacings = set()
 
-    print(f"\n{'-' * 60}")
+    print(f"\n{SEPARATOR}")
     print("DICOM vs NIfTI Validation")
-    print(f"{'-' * 60}")
+    print(SEPARATOR)
     print(f"DICOM source:  {dicom_root}")
     print(f"NIfTI output:  {nifti_root}")
     print(f"Mode:          {args.mode}")
     print(f"Items:         {total}")
-    print(f"{'-' * 60}\n")
+    print(f"{SEPARATOR}\n")
 
     progress = tqdm(enumerate(dicom_dirs, start=1), total=total, unit="series", desc="Validating")
 
@@ -183,9 +179,9 @@ def main():
             ))
 
     # Summary
-    print(f"\n{'-' * 60}")
+    print(f"\n{SEPARATOR}")
     print("Validation Summary")
-    print(f"{'-' * 60}")
+    print(SEPARATOR)
     print(f"Matched:     {match_count}/{total}")
     if mismatch_count > 0:
         print(f"Mismatched:  {mismatch_count}/{total}")
@@ -193,26 +189,26 @@ def main():
         print(f"Missing:     {missing_count}/{total}")
     if error_count > 0:
         print(f"Errors:      {error_count}/{total}")
-    print(f"{'-' * 60}")
+    print(SEPARATOR)
 
     if nifti_shapes or nifti_spacings:
-        print("Dataset Consistency:")
-        print(f"{'-' * 60}")
+        print("\nDataset Consistency")
+        print(SEPARATOR)
         if nifti_shapes:
             if len(nifti_shapes) == 1:
-                print(f"Shape:    Uniform - {list(nifti_shapes)[0]}")
+                print(f"Shape:    Uniform  [ {list(nifti_shapes)[0]} ]")
             else:
-                print(f"Shape:    Warning: {len(nifti_shapes)} unique dimensions found:")
+                print(f"Shape:    Warning  [ {len(nifti_shapes)} unique dimensions found ]")
                 for shape in sorted(nifti_shapes):
-                    print(f" - {shape}")
+                    print(f"    - {shape}")
 
         if nifti_spacings:
             if len(nifti_spacings) == 1:
-                print(f"Spacing:  Uniform - {list(nifti_spacings)[0]} mm")
+                print(f"Spacing:  Uniform  [ {list(nifti_spacings)[0]} mm ]")
             else:
-                print(f"Spacing:  Warning: {len(nifti_spacings)} unique spacings found:")
+                print(f"Spacing:  Warning  [ {len(nifti_spacings)} unique spacings found ]")
                 for spc in sorted(nifti_spacings):
-                    print(f" - {spc} mm")
+                    print(f"    - {spc} mm")
 
 if __name__ == "__main__":
     main()

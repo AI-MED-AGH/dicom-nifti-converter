@@ -1,8 +1,3 @@
-"""Flat naming strategy implementation.
-
-All NIfTI files are placed in a single directory. The original directory
-structure is encoded directly into the filename using a specified separator.
-"""
 from pathlib import Path
 from naming.base import NamingStrategy
 
