@@ -5,7 +5,8 @@ A fast and modular command-line toolkit for processing medical imaging datasets.
 ## Features
 
 - **Batch Conversion**: Fast DICOM to NIfTI transformation with automatic RAS reorientation.
-- **Strict Validation**: Post-conversion QA comparing dimensions and voxel spacing against original DICOM headers.
+- **Multi-Core Optimization**: Full utilization of all CPU cores via multiprocessing.
+- **Spatial Integrity Check**: Post-conversion QA comparing dimensions and voxel spacing against original DICOM headers.
 - **Dimension Analysis**: Generates detailed reports on spatial uniformity, detecting both dimensional and voxel spacing outliers across NIfTI and DICOM datasets.
 - **Pluggable Strategies**: Organize NIfTI files into flexible directory layouts (Flat, Mirror, Map).
 - **Lightweight Architecture**: Analyzes datasets by reading medical headers only, preventing RAM overload.
@@ -70,6 +71,7 @@ python analyze.py --dicom /path/to/dicoms -s report.txt
 |----------|----------|-------------|
 | `<dicom_dir>` | Yes (Positional) | Root directory containing input DICOM series. |
 | `-s`, `--save` | Yes | Output directory where NIfTI files will be saved. |
+| `-j`, `--jobs` | No | Number of parallel processes to run (default: 8). |
 | `--mode` | No | Output structure mode: `flat`, `mirror`, or `map` (default: `flat`). |
 | `--sep` | No | *(Strategy: flat)* Separator character for filenames (default: `@`). |
 | `--prefix` | No | *(Strategy: map)* Base filename prefix (default: `vol`). |
