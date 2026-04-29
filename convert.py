@@ -4,6 +4,7 @@ from concurrent.futures import ProcessPoolExecutor, as_completed
 from pathlib import Path
 import dicom2nifti
 from tqdm import tqdm
+from tqdm.contrib.logging import logging_redirect_tqdm
 
 from utils import find_dicom_directories, setup_logging, add_logger_args
 from naming import get_strategy, available_strategies
@@ -108,45 +109,46 @@ def main():
     logger.info("Items:     %s", total)
     logger.info(SEPARATOR)
 
-    if args.jobs == 1:
-        pbar = tqdm(jobs, disable=args.quiet, unit="series", desc="Converting")
-        for dicom_dir, relative_path, output_file in pbar:
-            pbar.set_postfix_str(f"{relative_path}")
-
-            if convert_single(dicom_dir, output_file):
-                successes += 1
-                logger.debug("Converted: %s", relative_path)
-            else:
-                failures += 1
-                failed_dirs.append(str(relative_path))
-                logger.warning("Failed: %s", relative_path)
-    else:
-        pbar = tqdm(disable=args.quiet, total=total, unit="series", desc="Converting")
-        with ProcessPoolExecutor(max_workers=args.jobs) as executor:
-            future2path = {
-                executor.submit(convert_single, dicom_dir, output_file): relative_path
-                for dicom_dir, relative_path, output_file in jobs
-            }
-
-            for future in as_completed(future2path.keys()):
-                relative_path = future2path[future]
+    with logging_redirect_tqdm(loggers=[logger]):
+        if args.jobs == 1:
+            pbar = tqdm(jobs, disable=args.quiet, unit="series", desc="Converting", leave=False)
+            for dicom_dir, relative_path, output_file in pbar:
                 pbar.set_postfix_str(f"{relative_path}")
 
-                try:
-                    result = future.result()
-                except Exception as e:
-                    logger.error("Error: %s: %s", relative_path, e)
-                    result = False
-
-                if result:
+                if convert_single(dicom_dir, output_file):
                     successes += 1
                     logger.debug("Converted: %s", relative_path)
                 else:
                     failures += 1
                     failed_dirs.append(str(relative_path))
                     logger.warning("Failed: %s", relative_path)
+        else:
+            pbar = tqdm(disable=args.quiet, total=total, unit="series", desc="Converting", leave=False)
+            with ProcessPoolExecutor(max_workers=args.jobs) as executor:
+                future2path = {
+                    executor.submit(convert_single, dicom_dir, output_file): relative_path
+                    for dicom_dir, relative_path, output_file in jobs
+                }
 
-                pbar.update(1)
+                for future in as_completed(future2path.keys()):
+                    relative_path = future2path[future]
+                    pbar.set_postfix_str(f"{relative_path}")
+
+                    try:
+                        result = future.result()
+                    except Exception as e:
+                        logger.error("Error: %s: %s", relative_path, e)
+                        result = False
+
+                    if result:
+                        successes += 1
+                        logger.debug("Converted: %s", relative_path)
+                    else:
+                        failures += 1
+                        failed_dirs.append(str(relative_path))
+                        logger.warning("Failed: %s", relative_path)
+
+                    pbar.update(1)
 
     strategy.on_conversion_complete(save_dir)
 

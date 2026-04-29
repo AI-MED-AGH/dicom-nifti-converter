@@ -6,6 +6,7 @@ import pydicom
 import nibabel as nib
 import numpy as np
 from tqdm import tqdm
+from tqdm.contrib.logging import logging_redirect_tqdm
 
 from utils import find_dicom_directories, setup_logging, add_logger_args
 from naming import get_strategy, available_strategies
@@ -145,46 +146,47 @@ def main():
     logger.info("Items:         %s", total)
     logger.info(SEPARATOR)
 
-    pbar = tqdm(
-        enumerate(dicom_dirs, start=1), disable=args.quiet,
-        total=total, unit="series", desc="Validating",
-    )
+    with logging_redirect_tqdm(loggers=[logger]):
+        pbar = tqdm(
+            enumerate(dicom_dirs, start=1), disable=args.quiet,
+            total=total, unit="series", desc="Validating", leave=False
+        )
 
-    for i, dicom_dir in pbar:
-        relative_path = dicom_dir.relative_to(dicom_root)
-        if relative_path == Path("."):
-            relative_path = Path(dicom_dir.name)
-        pbar.set_postfix_str(f"{relative_path}")
+        for i, dicom_dir in pbar:
+            relative_path = dicom_dir.relative_to(dicom_root)
+            if relative_path == Path("."):
+                relative_path = Path(dicom_dir.name)
+            pbar.set_postfix_str(f"{relative_path}")
 
-        nifti_path = strategy.resolve_nifti_path(nifti_root, relative_path)
+            nifti_path = strategy.resolve_nifti_path(nifti_root, relative_path)
 
-        if nifti_path is None:
-            missing_count += 1
-            logger.warning("No mapping found: %s", relative_path)
-            pbar.set_postfix_str(f"{relative_path} [SKIP]")
-            continue
+            if nifti_path is None:
+                missing_count += 1
+                logger.warning("No mapping found: %s", relative_path)
+                pbar.set_postfix_str(f"{relative_path} [SKIP]")
+                continue
 
-        if not nifti_path.exists():
-            missing_count += 1
-            logger.warning("Missing file: %s", nifti_path.name)
-            pbar.set_postfix_str(f"{relative_path} [MISS]")
-            continue
+            if not nifti_path.exists():
+                missing_count += 1
+                logger.warning("Missing file: %s", nifti_path.name)
+                pbar.set_postfix_str(f"{relative_path} [MISS]")
+                continue
 
-        result = verify_single_pair(dicom_dir, nifti_path)
-        if result is None:
-            error_count += 1
-        else:
-            is_match, shape, spacing = result
-            if is_match:
-                match_count += 1
+            result = verify_single_pair(dicom_dir, nifti_path)
+            if result is None:
+                error_count += 1
             else:
-                mismatch_count += 1
-            nifti_shapes.add(shape)
-            nifti_spacings.add((
-                round(float(spacing[0]), 3),
-                round(float(spacing[1]), 3),
-                round(float(spacing[2]), 3),
-            ))
+                is_match, shape, spacing = result
+                if is_match:
+                    match_count += 1
+                else:
+                    mismatch_count += 1
+                nifti_shapes.add(shape)
+                nifti_spacings.add((
+                    round(float(spacing[0]), 3),
+                    round(float(spacing[1]), 3),
+                    round(float(spacing[2]), 3),
+                ))
 
     # Summary
     logger.info(SEPARATOR)

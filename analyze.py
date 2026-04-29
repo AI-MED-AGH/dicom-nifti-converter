@@ -7,6 +7,7 @@ import nibabel as nib
 import numpy as np
 import pydicom
 from tqdm import tqdm
+from tqdm.contrib.logging import logging_redirect_tqdm
 
 from utils import find_dicom_directories, setup_logging, add_logger_args
 
@@ -36,16 +37,17 @@ def scan_nifti_directory(nifti_dir: Path, quiet: bool = False) -> list[VolumeInf
         raise FileNotFoundError(f"No .nii.gz files found in {nifti_dir}")
 
     volumes = []
-    for nii_path in tqdm(nifti_files, disable=quiet, desc="Scanning NIfTI", unit="file"):
-        try:
-            nii = nib.load(str(nii_path))
-            shape = nii.shape[:3]
-            spacing = tuple(round(float(z), 3) for z in nii.header.get_zooms()[:3])
+    with logging_redirect_tqdm(loggers=[logger]):
+        for nii_path in tqdm(nifti_files, disable=quiet, desc="Scanning NIfTI", unit="file", leave=False):
+            try:
+                nii = nib.load(str(nii_path))
+                shape = nii.shape[:3]
+                spacing = tuple(round(float(z), 3) for z in nii.header.get_zooms()[:3])
 
-            rel_name = str(nii_path.relative_to(nifti_dir))
-            volumes.append(VolumeInfo(rel_name, shape, spacing))
-        except Exception as e:
-            logger.error("Error reading %s: %s", nii_path.name, e)
+                rel_name = str(nii_path.relative_to(nifti_dir))
+                volumes.append(VolumeInfo(rel_name, shape, spacing))
+            except Exception as e:
+                logger.error("Error reading %s: %s", nii_path.name, e)
 
     return volumes
 
@@ -66,30 +68,31 @@ def scan_dicom_directory(dicom_root: Path, quiet: bool = False) -> list[VolumeIn
         raise FileNotFoundError(f"No DICOM directories found in {dicom_root}")
 
     volumes = []
-    for dicom_dir in tqdm(dicom_dirs, disable=quiet, desc="Scanning DICOM", unit="series"):
-        try:
-            dcm_files = list(dicom_dir.glob("*.dcm"))
-            ds = pydicom.dcmread(str(dcm_files[0]), stop_before_pixels=True)
+    with logging_redirect_tqdm(loggers=[logger]):
+        for dicom_dir in tqdm(dicom_dirs, disable=quiet, desc="Scanning DICOM", unit="series", leave=False):
+            try:
+                dcm_files = list(dicom_dir.glob("*.dcm"))
+                ds = pydicom.dcmread(str(dcm_files[0]), stop_before_pixels=True)
 
-            shape = (
-                getattr(ds, "Columns", 0),
-                getattr(ds, "Rows", 0),
-                len(dcm_files),
-            )
+                shape = (
+                    getattr(ds, "Columns", 0),
+                    getattr(ds, "Rows", 0),
+                    len(dcm_files),
+                )
 
-            pixel_spacing = getattr(ds, "PixelSpacing", [0.0, 0.0])
-            slice_thickness = getattr(ds, "SliceThickness", 0.0)
-            spacing_between_slices = getattr(ds, "SpacingBetweenSlices", slice_thickness)
-            spacing = (
-                round(float(pixel_spacing[0]), 3),
-                round(float(pixel_spacing[1]), 3),
-                round(abs(float(spacing_between_slices)), 3),
-            )
+                pixel_spacing = getattr(ds, "PixelSpacing", [0.0, 0.0])
+                slice_thickness = getattr(ds, "SliceThickness", 0.0)
+                spacing_between_slices = getattr(ds, "SpacingBetweenSlices", slice_thickness)
+                spacing = (
+                    round(float(pixel_spacing[0]), 3),
+                    round(float(pixel_spacing[1]), 3),
+                    round(abs(float(spacing_between_slices)), 3),
+                )
 
-            rel_name = str(dicom_dir.relative_to(dicom_root))
-            volumes.append(VolumeInfo(rel_name, shape, spacing))
-        except Exception as e:
-            logger.error("Error reading %s: %s", dicom_dir.name, e)
+                rel_name = str(dicom_dir.relative_to(dicom_root))
+                volumes.append(VolumeInfo(rel_name, shape, spacing))
+            except Exception as e:
+                logger.error("Error reading %s: %s", dicom_dir.name, e)
 
     return volumes
 
