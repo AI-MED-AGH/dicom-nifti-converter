@@ -1,4 +1,4 @@
-# DICOM to NIfTI Toolkit
+# dicom-nifti-converter
 
 A fast and modular command-line toolkit for processing medical imaging datasets. It simplifies batch DICOM-to-NIfTI conversion, ensures data integrity through strict spatial validation, and allows for highly customizable output organization via pluggable naming strategies.
 
@@ -10,6 +10,7 @@ A fast and modular command-line toolkit for processing medical imaging datasets.
 - **Dimension Analysis**: Generates detailed reports on spatial uniformity, detecting both dimensional and voxel spacing outliers across NIfTI and DICOM datasets.
 - **Pluggable Strategies**: Organize NIfTI files into flexible directory layouts (Flat, Mirror, Map).
 - **Lightweight Architecture**: Analyzes datasets by reading medical headers only, preventing RAM overload.
+- **Logging**: Logging system with console/file output separation and verbose/quiet modes.
 - **Clean CLI**: Standardized, progress-bar-equipped console outputs across all tools.
 
 ## Prerequisites
@@ -75,6 +76,9 @@ python analyze.py --dicom /path/to/dicoms -s report.txt
 | `--mode` | No | Output structure mode: `flat`, `mirror`, or `map` (default: `flat`). |
 | `--sep` | No | *(Strategy: flat)* Separator character for filenames (default: `@`). |
 | `--prefix` | No | *(Strategy: map)* Base filename prefix (default: `vol`). |
+| `--log-file <path>` | No | Save full execution logs (including DEBUG details) to a file. |
+| `-v`, `--verbose` | No | Flag to enable verbose console output (prints DEBUG messages). |
+| `-q`, `--quiet` | No | Flag to suppress the progress bar. |
 
 #### `validate.py`
 
@@ -86,16 +90,22 @@ python analyze.py --dicom /path/to/dicoms -s report.txt
 | `<nifti_dir>` | Yes (Positional) | Directory containing converted NIfTI files. |
 | `--mode` | No | Naming strategy used during conversion (default: `flat`). |
 | `--sep` | No | *(Strategy: flat)* Separator character that was used (default: `@`). |
+| `--log-file <path>` | No | Save full execution logs (including DEBUG details) to a file. |
+| `-v`, `--verbose` | No | Flag to enable verbose console output (prints DEBUG messages). |
+| `-q`, `--quiet` | No | Flag to suppress the progress bar. |
 
 #### `analyze.py`
 
-**Usage:** `python analyze.py (--nifti <dir> | --dicom <dir>) [-s <report.txt>]`
+**Usage:** `python analyze.py (--nifti <dir> | --dicom <dir>) [options]`
 
 | Argument | Required | Description |
 |----------|----------|-------------|
 | `--nifti` | Conditional | Directory containing `.nii.gz` files to analyze. *(Either this or `--dicom` is required)* |
 | `--dicom` | Conditional | Root directory containing DICOM series to analyze. *(Either this or `--nifti` is required)* |
 | `-s`, `--save` | No | Save the analysis report to a text file at the given path. |
+| `--log-file <path>` | No | Save full execution logs (including DEBUG details) to a file. |
+| `-v`, `--verbose` | No | Flag to enable verbose console output (prints DEBUG messages). |
+| `-q`, `--quiet` | No | Flag to suppress the progress bar. |
 
 ## Naming Strategies
 
@@ -162,7 +172,7 @@ STRATEGIES = {
 ## Project Structure
 
 ```text
-dicom-to-nifti-toolkit/
+dicom-nifti-converter/
 ├── convert.py              - CLI: DICOM to NIfTI converter
 ├── validate.py             - CLI: Post-conversion QA
 ├── analyze.py              - CLI: Dataset dimension and spacing analysis

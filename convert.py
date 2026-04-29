@@ -1,13 +1,15 @@
 import argparse
+import logging
 from concurrent.futures import ProcessPoolExecutor, as_completed
 from pathlib import Path
 import dicom2nifti
 from tqdm import tqdm
 
-from utils import find_dicom_directories
+from utils import find_dicom_directories, setup_logging, add_logger_args
 from naming import get_strategy, available_strategies
 
 SEPARATOR = "━" * 80
+logger = logging.getLogger("convert")
 
 
 def convert_single(dicom_dir: Path, output_path: Path) -> bool:
@@ -28,7 +30,7 @@ def convert_single(dicom_dir: Path, output_path: Path) -> bool:
     try:
         dicom2nifti.dicom_series_to_nifti(str(dicom_dir), str(output_path), reorient_nifti=True)
     except Exception as e:
-        tqdm.write(f"Error: {dicom_dir.name}: {e}")
+        logger.error("Conversion failed for %s: %s", dicom_dir.name, e)
         return False
 
     return True
@@ -56,7 +58,10 @@ def main():
     parser.add_argument("-j", "--jobs", type=int, default=default_jobs,
         help=f"Number of parallel jobs for conversion (default: {default_jobs})"
     )
+    add_logger_args(parser)
     args = parser.parse_args()
+
+    setup_logging("convert", log_file=args.log_file, verbose=args.verbose)
 
     root_dir = Path(args.dir).resolve()
     save_dir = Path(args.save).resolve()
@@ -93,28 +98,30 @@ def main():
         output_file = strategy.build_output_path(save_dir, relative_path, i)
         jobs.append((dicom_dir, relative_path, output_file))
 
-    print(f"\n{SEPARATOR}")
-    print("DICOM -> NIfTI Conversion")
-    print(SEPARATOR)
-    print(f"Source:    {root_dir}")
-    print(f"Output:    {save_dir}")
-    print(f"Mode:      {args.mode}")
-    print(f"Jobs:      {args.jobs}")
-    print(f"Items:     {total}")
-    print(f"{SEPARATOR}\n")
+    logger.info(SEPARATOR)
+    logger.info("DICOM -> NIfTI Conversion")
+    logger.info(SEPARATOR)
+    logger.info("Source:    %s", root_dir)
+    logger.info("Output:    %s", save_dir)
+    logger.info("Mode:      %s", args.mode)
+    logger.info("Jobs:      %s", args.jobs)
+    logger.info("Items:     %s", total)
+    logger.info(SEPARATOR)
 
     if args.jobs == 1:
-        progress = tqdm(jobs, unit="series", desc="Converting")
-        for dicom_dir, relative_path, output_file in progress:
-            progress.set_postfix_str(f"{relative_path}")
+        pbar = tqdm(jobs, disable=args.quiet, unit="series", desc="Converting")
+        for dicom_dir, relative_path, output_file in pbar:
+            pbar.set_postfix_str(f"{relative_path}")
 
             if convert_single(dicom_dir, output_file):
                 successes += 1
+                logger.debug("Converted: %s", relative_path)
             else:
                 failures += 1
                 failed_dirs.append(str(relative_path))
+                logger.warning("Failed: %s", relative_path)
     else:
-        progress = tqdm(total=total, unit="series", desc="Converting")
+        pbar = tqdm(disable=args.quiet, total=total, unit="series", desc="Converting")
         with ProcessPoolExecutor(max_workers=args.jobs) as executor:
             future2path = {
                 executor.submit(convert_single, dicom_dir, output_file): relative_path
@@ -123,36 +130,38 @@ def main():
 
             for future in as_completed(future2path.keys()):
                 relative_path = future2path[future]
-                progress.set_postfix_str(f"{relative_path}")
+                pbar.set_postfix_str(f"{relative_path}")
 
                 try:
                     result = future.result()
                 except Exception as e:
-                    tqdm.write(f"Error: {relative_path}: {e}")
+                    logger.error("Error: %s: %s", relative_path, e)
                     result = False
 
                 if result:
                     successes += 1
+                    logger.debug("Converted: %s", relative_path)
                 else:
                     failures += 1
                     failed_dirs.append(str(relative_path))
+                    logger.warning("Failed: %s", relative_path)
 
-                progress.update(1)
+                pbar.update(1)
 
     strategy.on_conversion_complete(save_dir)
 
     # Summary
-    print(f"\n{SEPARATOR}")
-    print("Conversion Summary")
-    print(SEPARATOR)
-    print(f"Successful:  {successes}/{total}")
+    logger.info(SEPARATOR)
+    logger.info("Conversion Summary")
+    logger.info(SEPARATOR)
+    logger.info("Successful:  %s/%s", successes, total)
     if failures > 0:
-        print(f"Failed:      {failures}/{total}")
+        logger.warning("Failed:      %s/%s", failures, total)
         for name in failed_dirs:
-            print(f"    - {name}")
+            logger.warning("    - %s", name)
     if total > 0:
-        print(f"Success rate:  {successes / total:.1%}")
-    print(SEPARATOR)
+        logger.info("Success rate:  %.1f%%", (successes / total) * 100)
+    logger.info(SEPARATOR)
 
 if __name__ == "__main__":
     main()

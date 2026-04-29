@@ -1,4 +1,5 @@
 import argparse
+import logging
 import textwrap
 from pathlib import Path
 from typing import NamedTuple
@@ -7,9 +8,11 @@ import numpy as np
 import pydicom
 from tqdm import tqdm
 
-from utils import find_dicom_directories
+from utils import find_dicom_directories, setup_logging, add_logger_args
 
 SEPARATOR = "━" * 80
+logger = logging.getLogger("analyze")
+
 
 class VolumeInfo(NamedTuple):
     name: str
@@ -17,11 +20,12 @@ class VolumeInfo(NamedTuple):
     spacing: tuple
 
 
-def scan_nifti_directory(nifti_dir: Path) -> list[VolumeInfo]:
+def scan_nifti_directory(nifti_dir: Path, quiet: bool = False) -> list[VolumeInfo]:
     """Parses dimensions and spacing from all NIfTI files in a directory.
 
     Args:
         nifti_dir: The root directory to scan for .nii.gz files.
+        quiet: If True, suppress the progress bar.
 
     Returns:
         A list of VolumeInfo objects containing spatial properties for each discovered NIfTI file.
@@ -32,7 +36,7 @@ def scan_nifti_directory(nifti_dir: Path) -> list[VolumeInfo]:
         raise FileNotFoundError(f"No .nii.gz files found in {nifti_dir}")
 
     volumes = []
-    for nii_path in tqdm(nifti_files, desc="Scanning NIfTI", unit="file"):
+    for nii_path in tqdm(nifti_files, disable=quiet, desc="Scanning NIfTI", unit="file"):
         try:
             nii = nib.load(str(nii_path))
             shape = nii.shape[:3]
@@ -41,16 +45,17 @@ def scan_nifti_directory(nifti_dir: Path) -> list[VolumeInfo]:
             rel_name = str(nii_path.relative_to(nifti_dir))
             volumes.append(VolumeInfo(rel_name, shape, spacing))
         except Exception as e:
-            tqdm.write(f"Error reading {nii_path.name}: {e}")
+            logger.error("Error reading %s: %s", nii_path.name, e)
 
     return volumes
 
 
-def scan_dicom_directory(dicom_root: Path) -> list[VolumeInfo]:
+def scan_dicom_directory(dicom_root: Path, quiet: bool = False) -> list[VolumeInfo]:
     """Parses dimensions and spacing directly from DICOM series headers.
 
     Args:
         dicom_root: The root directory to scan for DICOM series.
+        quiet: If True, suppress the progress bar.
 
     Returns:
         A list of VolumeInfo objects containing spatial properties for each discovered DICOM series.
@@ -61,7 +66,7 @@ def scan_dicom_directory(dicom_root: Path) -> list[VolumeInfo]:
         raise FileNotFoundError(f"No DICOM directories found in {dicom_root}")
 
     volumes = []
-    for dicom_dir in tqdm(dicom_dirs, desc="Scanning DICOM", unit="series"):
+    for dicom_dir in tqdm(dicom_dirs, disable=quiet, desc="Scanning DICOM", unit="series"):
         try:
             dcm_files = list(dicom_dir.glob("*.dcm"))
             ds = pydicom.dcmread(str(dcm_files[0]), stop_before_pixels=True)
@@ -84,7 +89,7 @@ def scan_dicom_directory(dicom_root: Path) -> list[VolumeInfo]:
             rel_name = str(dicom_dir.relative_to(dicom_root))
             volumes.append(VolumeInfo(rel_name, shape, spacing))
         except Exception as e:
-            tqdm.write(f"Error reading {dicom_dir.name}: {e}")
+            logger.error("Error reading %s: %s", dicom_dir.name, e)
 
     return volumes
 
@@ -145,7 +150,8 @@ def find_spacing_outliers(volumes: list[VolumeInfo]) -> list[VolumeInfo]:
     return outliers
 
 
-def build_report(volumes: list[VolumeInfo], dim_outliers: list[VolumeInfo], spc_outliers: list[VolumeInfo], source_type: str) -> str:
+def build_report(volumes: list[VolumeInfo], dim_outliers: list[VolumeInfo], spc_outliers: list[VolumeInfo],
+                 source_type: str) -> str:
     """Generates a text report summarizing dataset dimensions and potential issues.
 
     Args:
@@ -178,7 +184,7 @@ def build_report(volumes: list[VolumeInfo], dim_outliers: list[VolumeInfo], spc_
         shape_counts: dict[tuple, int] = {}
         for v in volumes:
             shape_counts[v.shape] = shape_counts.get(v.shape, 0) + 1
-        
+
         max_shape_len = max(len(str(shape)) for shape in shape_counts.keys())
         for shape, count in sorted(shape_counts.items(), key=lambda s: s[1], reverse=True):
             lines.append(f"    - {str(shape):<{max_shape_len}}  x{count}")
@@ -188,7 +194,7 @@ def build_report(volumes: list[VolumeInfo], dim_outliers: list[VolumeInfo], spc_
         for v in volumes:
             xy = v.shape[:2]
             xy_counts[xy] = xy_counts.get(xy, 0) + 1
-            
+
         if len(xy_counts) == 1:
             lines.append(f"\n  Resolution (X, Y) uniform: {list(xy_counts.keys())[0]}")
         else:
@@ -202,7 +208,7 @@ def build_report(volumes: list[VolumeInfo], dim_outliers: list[VolumeInfo], spc_
         for v in volumes:
             z = v.shape[2]
             z_counts[z] = z_counts.get(z, 0) + 1
-            
+
         if len(z_counts) == 1:
             lines.append(f"\n  Slice Count (Z) uniform: {list(z_counts.keys())[0]}")
         else:
@@ -210,7 +216,7 @@ def build_report(volumes: list[VolumeInfo], dim_outliers: list[VolumeInfo], spc_
             sorted_z = sorted(z_counts.items(), key=lambda x: x[1], reverse=True)
             z_strs = [f"{z}\xa0(x{count})" for z, count in sorted_z]
             z_line = ", ".join(z_strs)
-            
+
             for w in textwrap.wrap(z_line, width=76):
                 lines.append(f"    {w.replace(chr(160), ' ')}")
     lines.append(SEPARATOR)
@@ -225,7 +231,7 @@ def build_report(volumes: list[VolumeInfo], dim_outliers: list[VolumeInfo], spc_
         spacing_counts: dict[tuple, int] = {}
         for v in volumes:
             spacing_counts[v.spacing] = spacing_counts.get(v.spacing, 0) + 1
-            
+
         max_spc_len = max(len(str(spc)) for spc in spacing_counts.keys())
         for spc, count in sorted(spacing_counts.items(), key=lambda v: v[1], reverse=True):
             lines.append(f"    - {str(spc):<{max_spc_len}} mm  x{count}")
@@ -270,7 +276,6 @@ def build_report(volumes: list[VolumeInfo], dim_outliers: list[VolumeInfo], spc_
     return "\n".join(lines)
 
 
-
 def main():
     parser = argparse.ArgumentParser(
         prog="analyze",
@@ -283,34 +288,37 @@ def main():
     source.add_argument("--nifti", help="Directory containing .nii.gz files")
     source.add_argument("--dicom", help="Root directory containing DICOM series")
     parser.add_argument("-s", "--save", help="Save report to a text file")
+    add_logger_args(parser)
     args = parser.parse_args()
+
+    setup_logging("analyze", log_file=args.log_file, verbose=args.verbose)
 
     if args.nifti:
         nifti_dir = Path(args.nifti).resolve()
         if not nifti_dir.is_dir():
             raise NotADirectoryError(f"Directory does not exist: {nifti_dir}")
-        print(f"\nScanning NIfTI: {nifti_dir}\n")
-        vols = scan_nifti_directory(nifti_dir)
+        logger.info("Scanning NIfTI: %s", nifti_dir)
+        vols = scan_nifti_directory(nifti_dir, quiet=args.quiet)
         source_type = "NIfTI"
     else:
         dicom_dir = Path(args.dicom).resolve()
         if not dicom_dir.is_dir():
             raise NotADirectoryError(f"Directory does not exist: {dicom_dir}")
-        print(f"\nScanning DICOM: {dicom_dir}\n")
-        vols = scan_dicom_directory(dicom_dir)
+        logger.info("Scanning DICOM: %s", dicom_dir)
+        vols = scan_dicom_directory(dicom_dir, quiet=args.quiet)
         source_type = "DICOM"
 
     dim_outliers = find_dimension_outliers(vols)
     spc_outliers = find_spacing_outliers(vols)
     report = build_report(vols, dim_outliers, spc_outliers, source_type)
 
-    print(f"\n{report}")
+    logger.info("\n%s", report)
 
     if args.save:
         output_path = Path(args.save).resolve()
         output_path.parent.mkdir(parents=True, exist_ok=True)
         output_path.write_text(report, encoding="utf-8")
-        print(f"\nReport saved -> {output_path}")
+        logger.info("Report saved -> %s", output_path)
 
 if __name__ == "__main__":
     main()

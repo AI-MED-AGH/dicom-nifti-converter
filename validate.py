@@ -1,4 +1,5 @@
 import argparse
+import logging
 from pathlib import Path
 from typing import Optional, Tuple
 import pydicom
@@ -6,10 +7,11 @@ import nibabel as nib
 import numpy as np
 from tqdm import tqdm
 
-from utils import find_dicom_directories
+from utils import find_dicom_directories, setup_logging, add_logger_args
 from naming import get_strategy, available_strategies
 
 SEPARATOR = "━" * 80
+logger = logging.getLogger("validate")
 
 
 def verify_single_pair(dicom_dir: Path, nifti_path: Path) -> tuple[bool, tuple, tuple] | None:
@@ -44,10 +46,10 @@ def verify_single_pair(dicom_dir: Path, nifti_path: Path) -> tuple[bool, tuple, 
         nifti_full_shape = nii.shape
 
         if len(nifti_full_shape) < 3:
-            tqdm.write(f"ERROR: {nifti_path.name}: invalid NIfTI shape {nifti_full_shape}; expected at least 3 dimensions")
+            logger.error("%s: invalid NIfTI shape %s; expected at least 3 dimensions", nifti_path.name, nifti_full_shape)
             return None
         if len(nifti_full_shape) > 3:
-            tqdm.write(f"INFO: {nifti_path.name}: extra dimensions {nifti_full_shape[3:]} ignored")
+            logger.info("%s: extra dimensions %s ignored", nifti_path.name, nifti_full_shape[3:])
 
         nifti_shape = nifti_full_shape[:3]
         nifti_spacing = nii.header.get_zooms()[:3]
@@ -76,13 +78,13 @@ def verify_single_pair(dicom_dir: Path, nifti_path: Path) -> tuple[bool, tuple, 
                 issues.append(
                     f"slice spacing DICOM {dicom_spacing[2]:.4f} != NIfTI {nifti_spacing[2]:.4f}"
                 )
-            tqdm.write(f"Mismatch: {dicom_dir.name}")
+            logger.warning("Mismatch: %s", dicom_dir.name)
             for issue in issues:
-                tqdm.write(f"    {issue}")
+                logger.warning("    %s", issue)
             return False, nifti_shape, nifti_spacing
 
     except Exception as e:
-        tqdm.write(f"Error reading {dicom_dir.name}: {e}")
+        logger.error("Error reading %s: %s", dicom_dir.name, e)
         return None
 
 
@@ -103,7 +105,10 @@ def main():
         help=f"Directory structure mode used during conversion (default: flat). Available: {strategies}")
     parser.add_argument("--sep", default="@",
         help="Separator for compatible naming strategies (default: '@')")
+    add_logger_args(parser)
     args = parser.parse_args()
+
+    setup_logging("validate", log_file=args.log_file, verbose=args.verbose)
 
     dicom_root = Path(args.dicom_dir).resolve()
     nifti_root = Path(args.nifti_dir).resolve()
@@ -131,35 +136,38 @@ def main():
     nifti_shapes = set()
     nifti_spacings = set()
 
-    print(f"\n{SEPARATOR}")
-    print("DICOM vs NIfTI Validation")
-    print(SEPARATOR)
-    print(f"DICOM source:  {dicom_root}")
-    print(f"NIfTI output:  {nifti_root}")
-    print(f"Mode:          {args.mode}")
-    print(f"Items:         {total}")
-    print(f"{SEPARATOR}\n")
+    logger.info(SEPARATOR)
+    logger.info("DICOM vs NIfTI Validation")
+    logger.info(SEPARATOR)
+    logger.info("DICOM source:  %s", dicom_root)
+    logger.info("NIfTI output:  %s", nifti_root)
+    logger.info("Mode:          %s", args.mode)
+    logger.info("Items:         %s", total)
+    logger.info(SEPARATOR)
 
-    progress = tqdm(enumerate(dicom_dirs, start=1), total=total, unit="series", desc="Validating")
+    pbar = tqdm(
+        enumerate(dicom_dirs, start=1), disable=args.quiet,
+        total=total, unit="series", desc="Validating",
+    )
 
-    for i, dicom_dir in progress:
+    for i, dicom_dir in pbar:
         relative_path = dicom_dir.relative_to(dicom_root)
         if relative_path == Path("."):
             relative_path = Path(dicom_dir.name)
-        progress.set_postfix_str(f"{relative_path}")
+        pbar.set_postfix_str(f"{relative_path}")
 
         nifti_path = strategy.resolve_nifti_path(nifti_root, relative_path)
 
         if nifti_path is None:
             missing_count += 1
-            tqdm.write(f"Warning: No mapping found: {relative_path}")
-            progress.set_postfix_str(f"{relative_path} [SKIP]")
+            logger.warning("No mapping found: %s", relative_path)
+            pbar.set_postfix_str(f"{relative_path} [SKIP]")
             continue
 
         if not nifti_path.exists():
             missing_count += 1
-            tqdm.write(f"Warning: Missing file: {nifti_path.name}")
-            progress.set_postfix_str(f"{relative_path} [MISS]")
+            logger.warning("Missing file: %s", nifti_path.name)
+            pbar.set_postfix_str(f"{relative_path} [MISS]")
             continue
 
         result = verify_single_pair(dicom_dir, nifti_path)
@@ -179,36 +187,36 @@ def main():
             ))
 
     # Summary
-    print(f"\n{SEPARATOR}")
-    print("Validation Summary")
-    print(SEPARATOR)
-    print(f"Matched:     {match_count}/{total}")
+    logger.info(SEPARATOR)
+    logger.info("Validation Summary")
+    logger.info(SEPARATOR)
+    logger.info("Matched:     %s/%s", match_count, total)
     if mismatch_count > 0:
-        print(f"Mismatched:  {mismatch_count}/{total}")
+        logger.warning("Mismatched:  %s/%s", mismatch_count, total)
     if missing_count > 0:
-        print(f"Missing:     {missing_count}/{total}")
+        logger.warning("Missing:     %s/%s", missing_count, total)
     if error_count > 0:
-        print(f"Errors:      {error_count}/{total}")
-    print(SEPARATOR)
+        logger.warning("Errors:      %s/%s", error_count, total)
+    logger.info(SEPARATOR)
 
     if nifti_shapes or nifti_spacings:
-        print("\nDataset Consistency")
-        print(SEPARATOR)
+        logger.info("Dataset Consistency")
+        logger.info(SEPARATOR)
         if nifti_shapes:
             if len(nifti_shapes) == 1:
-                print(f"Shape:    Uniform  [ {list(nifti_shapes)[0]} ]")
+                logger.info("Shape:    Uniform  [ %s ]", list(nifti_shapes)[0])
             else:
-                print(f"Shape:    Warning  [ {len(nifti_shapes)} unique dimensions found ]")
+                logger.warning("Shape:    Warning  [ %s unique dimensions found ]", len(nifti_shapes))
                 for shape in sorted(nifti_shapes):
-                    print(f"    - {shape}")
+                    logger.warning("    - %s", shape)
 
         if nifti_spacings:
             if len(nifti_spacings) == 1:
-                print(f"Spacing:  Uniform  [ {list(nifti_spacings)[0]} mm ]")
+                logger.info("Spacing:  Uniform  [ %s mm ]", list(nifti_spacings)[0])
             else:
-                print(f"Spacing:  Warning  [ {len(nifti_spacings)} unique spacings found ]")
+                logger.warning("Spacing:  Warning  [ %s unique spacings found ]", len(nifti_spacings))
                 for spc in sorted(nifti_spacings):
-                    print(f"    - {spc} mm")
+                    logger.warning("    - %s mm", spc)
 
 if __name__ == "__main__":
     main()
