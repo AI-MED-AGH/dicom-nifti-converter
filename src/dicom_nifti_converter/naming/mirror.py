@@ -1,5 +1,5 @@
 from pathlib import Path
-from naming.base import NamingStrategy
+from .base import NamingStrategy
 
 
 class MirrorStrategy(NamingStrategy):

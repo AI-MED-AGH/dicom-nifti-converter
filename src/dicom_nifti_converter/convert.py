@@ -6,8 +6,8 @@ import dicom2nifti
 from tqdm import tqdm
 from tqdm.contrib.logging import logging_redirect_tqdm
 
-from utils import find_dicom_directories, setup_logging, add_logger_args
-from naming import get_strategy, available_strategies
+from .utils import find_dicom_directories, setup_logging, add_logger_args
+from .naming import get_strategy, available_strategies
 
 SEPARATOR = "━" * 80
 logger = logging.getLogger("convert")

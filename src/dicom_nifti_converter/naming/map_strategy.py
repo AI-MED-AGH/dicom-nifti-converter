@@ -1,7 +1,7 @@
 import json
 from pathlib import Path
 
-from naming.base import NamingStrategy
+from .base import NamingStrategy
 
 
 class MapStrategy(NamingStrategy):

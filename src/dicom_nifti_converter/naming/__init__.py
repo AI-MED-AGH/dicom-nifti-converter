@@ -1,7 +1,7 @@
-from naming.base import NamingStrategy
-from naming.flat import FlatStrategy
-from naming.mirror import MirrorStrategy
-from naming.map_strategy import MapStrategy
+from .base import NamingStrategy
+from .flat import FlatStrategy
+from .mirror import MirrorStrategy
+from .map_strategy import MapStrategy
 
 STRATEGIES: dict[str, type[NamingStrategy]] = {
     "flat": FlatStrategy,
