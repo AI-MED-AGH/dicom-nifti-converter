@@ -1,0 +1,51 @@
+[project]
+name = "dicom-nifti-converter"
+version = "0.1.0"
+description = "Toolkit for batch DICOM to NIfTI conversion, validation, and dataset analysis."
+readme = "README.md"
+requires-python = ">=3.10"
+license = "MIT"
+license-files = ["LICENSE"]
+authors = [
+  { name = "Łukasz Widz", email = "lwidz@student.agh.edu.pl"},
+  { name = "Piotr Matusiewicz", email = "pmatusiewicz@student.agh.edu.pl"}
+]
+keywords = [
+  "dicom",
+  "nifti",
+  "medical-images",
+  "conversion",
+  "validation",
+  "analysis"
+]
+classifiers = [
+  "Development Status :: 4 - Beta",
+  "Intended Audience :: Healthcare Industry",
+  "Intended Audience :: Developers",
+  "Programming Language :: Python :: 3",
+  "Programming Language :: Python :: 3.10",
+  "Programming Language :: Python :: 3.11",
+  "Programming Language :: Python :: 3.12",
+  "Topic :: Scientific/Engineering :: Medical Science Apps",
+  "Topic :: Scientific/Engineering :: Image Processing",
+  "Topic :: Utilities",
+]
+dependencies = [
+  "dicom2nifti~=2.4.8",
+  "pydicom~=2.4.4",
+  "nibabel~=5.2.1",
+  "numpy~=1.26.4",
+  "tqdm~=4.66.2",
+]
+
+[build-system]
+requires = ["setuptools>=69", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project.scripts]
+dnc-analyze = "dicom_nifti_converter.analyze:main"
+dnc-convert = "dicom_nifti_converter.convert:main"
+dnc-validate = "dicom_nifti_converter.validate:main"
+
+[tool.setuptools.packages.find]
+where = ["src"]
