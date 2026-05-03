@@ -31,11 +31,11 @@ classifiers = [
   "Topic :: Utilities",
 ]
 dependencies = [
-  "dicom2nifti~=2.4.8",
-  "pydicom~=2.4.4",
-  "nibabel~=5.2.1",
-  "numpy~=1.26.4",
-  "tqdm~=4.66.2",
+  "dicom2nifti>=2.4.0",
+  "pydicom>=2.4.0",
+  "nibabel>=5.2.0",
+  "numpy>=1.26.0",
+  "tqdm>=4.66.0",
 ]
 
 [build-system]
